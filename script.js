@@ -79,8 +79,15 @@ function validateFile(file) {
 
 // Upload file using AJAX
 async function uploadFile() {
+    const file = photoInput.files[0];
+    
+    if (!file) {
+        showMessage('Pilih file terlebih dahulu', 'error');
+        return;
+    }
+    
     const formData = new FormData();
-    formData.append('photo', photoInput.files[0]);
+    formData.append('photo', file);
     formData.append('ajax_upload', '1');
     
     // Show loading state
@@ -89,21 +96,40 @@ async function uploadFile() {
     try {
         const response = await fetch('upload.php', {
             method: 'POST',
-            body: formData
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
         });
         
-        const result = await response.json();
+        // Check if response is ok
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        // Get response text first to debug
+        const responseText = await response.text();
+        console.log('Server response:', responseText);
+        
+        // Try to parse JSON
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (e) {
+            console.error('JSON parse error:', e);
+            throw new Error('Server mengembalikan response yang tidak valid');
+        }
         
         if (result.success) {
             showMessage(result.message, 'success');
             resetForm();
-            loadPhotos(); // Reload photo gallery
+            await loadPhotos(); // Reload photo gallery
         } else {
             showMessage(result.message, 'error');
         }
     } catch (error) {
-        showMessage('Terjadi kesalahan saat mengupload file', 'error');
         console.error('Upload error:', error);
+        showMessage('Terjadi kesalahan saat mengupload file: ' + error.message, 'error');
     } finally {
         setUploadButtonLoading(false);
     }
@@ -157,9 +183,23 @@ function showMessage(message, type) {
 async function loadPhotos() {
     try {
         const response = await fetch('upload.php?action=get_photos');
-        const data = await response.json();
         
-        if (data.photos && data.photos.length > 0) {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const responseText = await response.text();
+        console.log('Photos response:', responseText);
+        
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (e) {
+            console.error('JSON parse error:', e);
+            throw new Error('Server mengembalikan response yang tidak valid');
+        }
+        
+        if (data.success !== false && data.photos && data.photos.length > 0) {
             displayPhotos(data.photos);
             photoGallery.style.display = 'block';
         } else {
@@ -167,6 +207,7 @@ async function loadPhotos() {
         }
     } catch (error) {
         console.error('Error loading photos:', error);
+        // Don't show error to user for this, just log it
     }
 }
 
